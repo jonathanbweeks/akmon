@@ -1640,14 +1640,15 @@ Complete and verify the current file(s), then continue in the next turn.";
                 }
             }
 
-            const TOOL_REPEAT_LIMIT: u32 = 5;
-            if (name == "list_directory" || name == "read_file")
+            let tool_repeat_limit = self.policy.tool_repeat_limit(name.as_str());
+            if tool_repeat_limit > 0
+                && (name == "list_directory" || name == "read_file")
                 && self
                     .tool_call_counts
                     .get(name.as_str())
                     .copied()
                     .unwrap_or(0)
-                    >= TOOL_REPEAT_LIMIT
+                    >= tool_repeat_limit
             {
                 let call_count = self
                     .tool_call_counts

@@ -95,6 +95,27 @@ pub fn open_default_journal_handle(
     Ok(JournalHandle::new(store, Arc::new(Mutex::new(graph))))
 }
 
+/// Opens an ephemeral journal for a subagent session.
+///
+/// Uses a unique temp directory keyed to `session_id` so the subagent's redb
+/// file never conflicts with the parent session's exclusive lock on the shared
+/// `journal.redb`.  The temp directory is left on disk after the session ends
+/// (cleaned up by the OS on reboot or by a future maintenance pass).
+pub fn open_subagent_journal_handle(
+    session_id: Uuid,
+) -> Result<JournalHandle<RedbObjectStore, RedbSessionGraph>, AgentError> {
+    let dir = std::env::temp_dir().join(format!("akmon-subagent-{session_id}"));
+    std::fs::create_dir_all(&dir).map_err(|e| AgentError::SessionFailed {
+        message: format!("subagent journal mkdir {}: {e}", dir.display()),
+    })?;
+    let db_path = journal_db_path(&dir);
+    let store = RedbObjectStore::create(db_path.as_path(), HashAlgorithm::Sha256)
+        .map_err(journal_err)?;
+    let store = Arc::new(store);
+    let graph = RedbSessionGraph::open_new(Arc::clone(&store), session_id).map_err(journal_err)?;
+    Ok(JournalHandle::new(store, Arc::new(Mutex::new(graph))))
+}
+
 /// Opens an existing journal + session graph for read-only operations by `session_id`.
 ///
 /// This function never creates a journal or session. It returns an error when the database file is

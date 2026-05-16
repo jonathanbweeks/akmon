@@ -12,7 +12,7 @@ use serde_json::Value as JsonValue;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-use crate::open_default_journal_handle;
+use crate::open_subagent_journal_handle;
 use crate::session::AgentSession;
 
 /// Builds a fresh tool list for each nested run (excludes `spawn_subagent`).
@@ -115,7 +115,7 @@ impl Tool for SpawnSubagentTool {
             model_estimates: Vec::new(),
         };
 
-        let journal = match open_default_journal_handle(sub_config.session_id) {
+        let journal = match open_subagent_journal_handle(sub_config.session_id) {
             Ok(j) => j,
             Err(e) => {
                 return ToolOutput::Error {

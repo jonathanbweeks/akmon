@@ -28,6 +28,8 @@ pub struct PolicyConfig {
     pub tools: ToolPolicyConfig,
     /// MCP server/tool governance rules for external tool calls.
     pub mcp: McpPolicyConfig,
+    /// Per-tool call-count limits.
+    pub limits: LimitsPolicyConfig,
 }
 
 /// Read/write filesystem policy buckets.
@@ -88,6 +90,25 @@ pub struct McpPolicyConfig {
     pub servers: PatternRuleSet,
     /// MCP tool allow/deny patterns matched against MCP tool name.
     pub tools: PatternRuleSet,
+}
+
+/// Per-tool call-count limits enforced by the session loop.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LimitsPolicyConfig {
+    /// Maximum `read_file` calls per session. 0 = unlimited.
+    pub max_read_file_calls: u32,
+    /// Maximum `list_directory` calls per session. 0 = unlimited.
+    pub max_list_directory_calls: u32,
+}
+
+impl Default for LimitsPolicyConfig {
+    fn default() -> Self {
+        Self {
+            max_read_file_calls: 50,
+            max_list_directory_calls: 50,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -427,6 +448,21 @@ impl PolicyEngine {
     /// Returns the active mode.
     pub fn mode(&self) -> &PolicyEngineMode {
         &self.mode
+    }
+
+    /// Returns the per-session call limit for `tool_name`.
+    /// Uses the configured value when the engine is in `Configured` mode,
+    /// otherwise returns the `LimitsPolicyConfig` default (50).
+    pub fn tool_repeat_limit(&self, tool_name: &str) -> u32 {
+        let cfg_limit = match &self.mode {
+            PolicyEngineMode::Configured(cfg) => match tool_name {
+                "read_file" => cfg.limits.max_read_file_calls,
+                "list_directory" => cfg.limits.max_list_directory_calls,
+                _ => return 0,
+            },
+            _ => return LimitsPolicyConfig::default().max_read_file_calls,
+        };
+        cfg_limit
     }
 
     /// Automatic evaluation: [`PolicyEngineMode::DenyAll`], [`PolicyEngineMode::Configured`],
