@@ -1650,6 +1650,14 @@ fn exit_resume_session_error(cli: &Cli, e: String) -> ! {
 #[command(
     name = "akmon",
     version,
+    long_version = concat!(
+        env!("CARGO_PKG_VERSION"),
+        " (built ",
+        env!("AKMON_BUILD_TIME"),
+        " @ ",
+        env!("AKMON_GIT_HASH"),
+        ")"
+    ),
     about = "Local-first AI coding agent. Runs with Ollama (local) or Anthropic API. All actions are audited."
 )]
 pub(crate) struct Cli {
