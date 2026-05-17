@@ -13,6 +13,10 @@
 rust_repository/
 typescript_repository/
 
+# Cargo vendor tree and config (local offline-build setup, not committed)
+vendor/
+.cargo/
+
 # Editor / agent tooling (not part of the product)
 .cursor/
 .specstory/
