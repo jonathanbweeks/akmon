@@ -356,6 +356,7 @@ fn candidate_openrouter_slash(
     let step = 3u32;
     let m = cfg.model.trim();
     let applicable = m.contains('/');
+    let has_compat_url = nonempty(cfg.openai_compatible_url.clone()).is_some();
     let has_key = nonempty(cfg.openrouter_api_key.clone()).is_some();
     let st = row_state(step, win, fail);
 
@@ -363,6 +364,12 @@ fn candidate_openrouter_slash(
         (
             false,
             "Not applicable: OpenRouter `org/model` slugs require `/` in the model id.".into(),
+            vec![],
+        )
+    } else if applicable && has_compat_url {
+        (
+            false,
+            "Skipped: explicit `openai_compatible_url` is configured; local URL takes priority over model-name heuristics. Slash model IDs can target local servers (llama.cpp, vllm, etc.).".into(),
             vec![],
         )
     } else if st == "matched" {

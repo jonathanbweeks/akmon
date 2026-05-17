@@ -243,7 +243,10 @@ impl LlmConnectConfig {
             return Err(ProviderError::ClaudeModelsRequireApiKey);
         }
 
-        if model_trim.contains('/') {
+        // Only treat slash model IDs as OpenRouter if no explicit local URL is configured.
+        // An explicit openai_compatible_url always takes priority over model-name heuristics,
+        // so a model like `org/model-name` can target a local llama.cpp / vllm server.
+        if model_trim.contains('/') && nonempty(self.openai_compatible_url.clone()).is_none() {
             let key = nonempty(self.openrouter_api_key)
                 .ok_or(ProviderError::OpenRouterKeyRequiredForSlashModel)?;
             return Ok(Arc::new(OpenAiCompatBackend::openrouter(key, model)));
@@ -396,6 +399,45 @@ mod tests {
         .resolve()
         .expect("ollama");
         assert_eq!(r.name(), "ollama");
+    }
+
+    #[test]
+    fn slash_model_with_compat_url_bypasses_openrouter() {
+        // Reproduces the legion fleet failure: llama.cpp serves a HuggingFace-style
+        // model ID (org/model) but we must route to the local server, not OpenRouter.
+        if std::env::var("AWS_ACCESS_KEY_ID")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .is_some()
+        {
+            return;
+        }
+        let r = LlmConnectConfig {
+            model: "bartowski/Tesslate_OmniCoder-9B-GGUF:Q4_K_M".into(),
+            openai_compatible_url: Some("http://192.168.7.69:8080/v1".into()),
+            openai_compatible_api_key: Some("none".into()),
+            ..Default::default()
+        }
+        .resolve();
+        let p = r.expect("should resolve to custom compat backend");
+        assert!(
+            !p.name().starts_with("openrouter/"),
+            "slash model with explicit URL must not route to OpenRouter; got {}",
+            p.name()
+        );
+    }
+
+    #[test]
+    fn slash_model_without_compat_url_still_requires_openrouter_key() {
+        let r = LlmConnectConfig {
+            model: "org/some-model".into(),
+            ..Default::default()
+        }
+        .resolve();
+        match r {
+            Err(e) => assert_eq!(e, ProviderError::OpenRouterKeyRequiredForSlashModel),
+            Ok(p) => panic!("expected OpenRouter key error, got provider {}", p.name()),
+        }
     }
 
     #[test]
