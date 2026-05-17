@@ -5261,6 +5261,7 @@ type SemanticIndexParts = (
 /// [`SemanticSearchTool`] is included when built with `semantic-index` and `semantic` is [`Some`].
 fn build_tool_registry(
     shell_allow: &[String],
+    shell_timeout_secs: u64,
     web_fetch: bool,
     has_git_root: bool,
     plan_mode: bool,
@@ -5300,7 +5301,11 @@ fn build_tool_registry(
         tools.push(Box::new(WebFetchTool::new()));
     }
     if !shell_allow.is_empty() {
-        tools.push(Box::new(ShellTool::new(shell_allow.to_vec())));
+        tools.push(Box::new(ShellTool::with_limits(
+            shell_allow.to_vec(),
+            shell_timeout_secs,
+            524_288,
+        )));
     }
     #[cfg(feature = "semantic-index")]
     if let Some((slot, emb)) = semantic {
@@ -5319,6 +5324,7 @@ fn cli_attach_specs_subagent(
     cli: &Cli,
     has_git_root: bool,
     plan_mode: bool,
+    shell_timeout_secs: u64,
     provider: &Arc<dyn LlmProvider>,
     sandbox: &Arc<Sandbox>,
     akmon_md: &Option<String>,
@@ -5335,6 +5341,7 @@ fn cli_attach_specs_subagent(
     let factory: SubagentToolFactory = Arc::new(move || {
         build_tool_registry(
             &shell_allow,
+            shell_timeout_secs,
             web_fetch,
             has_git_root,
             plan_for_sub,
@@ -5358,6 +5365,7 @@ fn cli_attach_specs_subagent(
     cli: &Cli,
     has_git_root: bool,
     plan_mode: bool,
+    shell_timeout_secs: u64,
     provider: &Arc<dyn LlmProvider>,
     sandbox: &Arc<Sandbox>,
     akmon_md: &Option<String>,
@@ -5369,8 +5377,9 @@ fn cli_attach_specs_subagent(
     let shell_allow = cli.shell_allow.clone();
     let web_fetch = cli.web_fetch;
     let plan_for_sub = plan_mode;
-    let factory: SubagentToolFactory =
-        Arc::new(move || build_tool_registry(&shell_allow, web_fetch, has_git_root, plan_for_sub));
+    let factory: SubagentToolFactory = Arc::new(move || {
+        build_tool_registry(&shell_allow, shell_timeout_secs, web_fetch, has_git_root, plan_for_sub)
+    });
     let rt = Arc::new(SubagentRuntime {
         provider: Arc::clone(provider),
         sandbox: Arc::clone(sandbox),
@@ -6136,6 +6145,21 @@ async fn main() -> ExitCode {
             ),
             ollama_url: cli.ollama_url.clone(),
             shell_allow: cli.shell_allow.clone(),
+            shell_timeout_secs: {
+                policy_cmd::resolve_effective_policy(
+                    &project_root,
+                    &global,
+                    &policy_cmd::PolicyResolutionOptions {
+                        profile: cli.policy_profile.map(Into::into),
+                        pack_paths: cli.policy_pack.clone(),
+                        override_path: cli.policy_override.clone(),
+                    },
+                )
+                .ok()
+                .flatten()
+                .and_then(|r| r.effective.shell.shell_timeout_secs)
+                .unwrap_or(120)
+            },
             web_fetch: cli.web_fetch,
             yes_web: cli.yes_web,
             auto_yes: cli.yes,
@@ -6245,10 +6269,13 @@ async fn main() -> ExitCode {
             override_path: cli.policy_override.clone(),
         },
     );
-    let policy_mode = match resolved_policy {
-        Ok(Some(resolved)) => PolicyEngineMode::Configured(resolved.effective),
+    let (policy_mode, shell_timeout_secs) = match resolved_policy {
+        Ok(Some(resolved)) => {
+            let timeout = resolved.effective.shell.shell_timeout_secs.unwrap_or(120);
+            (PolicyEngineMode::Configured(resolved.effective), timeout)
+        }
         Ok(None) => {
-            if cli.yes {
+            let mode = if cli.yes {
                 if cli.web_fetch && cli.yes_web {
                     PolicyEngineMode::AutoApproveReadsAndFetch {
                         confirm_writes: true,
@@ -6260,7 +6287,8 @@ async fn main() -> ExitCode {
                 }
             } else {
                 PolicyEngineMode::Interactive
-            }
+            };
+            (mode, 120u64)
         }
         Err(e) => {
             exit_early_config_error(
@@ -6353,6 +6381,7 @@ async fn main() -> ExitCode {
         };
         let mut tools = build_tool_registry(
             &cli.shell_allow,
+            shell_timeout_secs,
             cli.web_fetch,
             has_git_root,
             true,
@@ -6365,6 +6394,7 @@ async fn main() -> ExitCode {
             &cli,
             has_git_root,
             true,
+            shell_timeout_secs,
             &provider,
             &sandbox,
             &akmon_content,
@@ -6376,6 +6406,7 @@ async fn main() -> ExitCode {
             &cli,
             has_git_root,
             true,
+            shell_timeout_secs,
             &provider,
             &sandbox,
             &akmon_content,
@@ -6526,6 +6557,7 @@ async fn main() -> ExitCode {
         };
         let mut tools_planner = build_tool_registry(
             &cli.shell_allow,
+            shell_timeout_secs,
             cli.web_fetch,
             has_git_root,
             true,
@@ -6538,6 +6570,7 @@ async fn main() -> ExitCode {
             &cli,
             has_git_root,
             true,
+            shell_timeout_secs,
             &provider_planner,
             &sandbox,
             &akmon_content,
@@ -6549,6 +6582,7 @@ async fn main() -> ExitCode {
             &cli,
             has_git_root,
             true,
+            shell_timeout_secs,
             &provider_planner,
             &sandbox,
             &akmon_content,
@@ -6621,6 +6655,7 @@ async fn main() -> ExitCode {
         };
         let mut tools = build_tool_registry(
             &cli.shell_allow,
+            shell_timeout_secs,
             cli.web_fetch,
             has_git_root,
             false,
@@ -6655,6 +6690,7 @@ async fn main() -> ExitCode {
             &cli,
             has_git_root,
             false,
+            shell_timeout_secs,
             &provider_main,
             &sandbox,
             &akmon_content,
@@ -6666,6 +6702,7 @@ async fn main() -> ExitCode {
             &cli,
             has_git_root,
             false,
+            shell_timeout_secs,
             &provider_main,
             &sandbox,
             &akmon_content,
@@ -6790,6 +6827,7 @@ async fn main() -> ExitCode {
 
     let mut tools = build_tool_registry(
         &cli.shell_allow,
+        shell_timeout_secs,
         cli.web_fetch,
         has_git_root,
         false,
@@ -6824,6 +6862,7 @@ async fn main() -> ExitCode {
         &cli,
         has_git_root,
         false,
+        shell_timeout_secs,
         &provider,
         &sandbox,
         &akmon_content,
@@ -6835,6 +6874,7 @@ async fn main() -> ExitCode {
         &cli,
         has_git_root,
         false,
+        shell_timeout_secs,
         &provider,
         &sandbox,
         &akmon_content,
@@ -7004,6 +7044,7 @@ mod tests {
     ) -> Vec<Box<dyn akmon_tools::Tool>> {
         build_tool_registry(
             shell_allow,
+            120,
             web_fetch,
             has_git_root,
             plan_mode,

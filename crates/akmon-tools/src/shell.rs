@@ -15,7 +15,7 @@ use crate::context::ToolContext;
 use crate::output::{ToolErrorCode, ToolOutput};
 
 /// Default wall-clock limit for a single subprocess (seconds).
-const DEFAULT_TIMEOUT_SECS: u64 = 30;
+const DEFAULT_TIMEOUT_SECS: u64 = 120;
 /// Default cap on combined stdout+stderr bytes kept in the tool result.
 const DEFAULT_MAX_OUTPUT_BYTES: usize = 524_288;
 
@@ -55,8 +55,8 @@ impl ShellTool {
         }
     }
 
-    #[cfg(test)]
-    fn with_limits(allowlist: Vec<String>, timeout_secs: u64, max_output_bytes: usize) -> Self {
+    /// Like [`ShellTool::new`] but with explicit timeout and output-size limits.
+    pub fn with_limits(allowlist: Vec<String>, timeout_secs: u64, max_output_bytes: usize) -> Self {
         let patterns = allowlist
             .into_iter()
             .filter_map(|s| Pattern::new(&s).ok())

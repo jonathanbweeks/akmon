@@ -60,6 +60,8 @@ pub struct ShellPolicyConfig {
     pub allow_prefixes: Vec<String>,
     /// Command prefixes that are blocked.
     pub deny_prefixes: Vec<String>,
+    /// Override the default shell tool timeout (seconds). None means use the compiled-in default.
+    pub shell_timeout_secs: Option<u64>,
 }
 
 /// Domain rules for network fetches.

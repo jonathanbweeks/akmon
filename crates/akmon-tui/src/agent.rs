@@ -66,6 +66,7 @@ type QuestionAnswerSenderSlot = Arc<tokio::sync::Mutex<Option<mpsc::Sender<Strin
 
 fn build_tool_registry(
     shell_allow: &[String],
+    shell_timeout_secs: u64,
     web_fetch: bool,
     #[cfg(feature = "semantic-index")] semantic: Option<crate::config::SemanticIndexSlot>,
     has_git_root: bool,
@@ -105,7 +106,11 @@ fn build_tool_registry(
         tools.push(Box::new(WebFetchTool::new()));
     }
     if !shell_allow.is_empty() {
-        tools.push(Box::new(ShellTool::new(shell_allow.to_vec())));
+        tools.push(Box::new(ShellTool::with_limits(
+            shell_allow.to_vec(),
+            shell_timeout_secs,
+            524_288,
+        )));
     }
     #[cfg(feature = "semantic-index")]
     if let Some((slot, emb)) = semantic {
@@ -130,6 +135,7 @@ fn attach_specs_subagent_tools(
         tools.push(Box::new(WriteSpecTool::new()));
     }
     let shell_allow = cfg.shell_allow.clone();
+    let shell_timeout_secs = cfg.shell_timeout_secs;
     let web_fetch = cfg.web_fetch;
     let has_git = cfg.sandbox_has_git_root;
     #[cfg(feature = "semantic-index")]
@@ -140,6 +146,7 @@ fn attach_specs_subagent_tools(
         {
             build_tool_registry(
                 &shell_allow,
+                shell_timeout_secs,
                 web_fetch,
                 semantic.clone(),
                 has_git,
@@ -148,7 +155,7 @@ fn attach_specs_subagent_tools(
         }
         #[cfg(not(feature = "semantic-index"))]
         {
-            build_tool_registry(&shell_allow, web_fetch, has_git, plan_for_sub)
+            build_tool_registry(&shell_allow, shell_timeout_secs, web_fetch, has_git, plan_for_sub)
         }
     });
     let rt = Arc::new(SubagentRuntime {
@@ -203,6 +210,7 @@ async fn build_agent_session(
 
     let mut tools = build_tool_registry(
         &config.shell_allow,
+        config.shell_timeout_secs,
         config.web_fetch,
         #[cfg(feature = "semantic-index")]
         config.semantic_index.clone(),
@@ -270,6 +278,7 @@ fn apply_plan_tool_state(
 ) {
     let mut tools = build_tool_registry(
         &cfg.shell_allow,
+        cfg.shell_timeout_secs,
         cfg.web_fetch,
         #[cfg(feature = "semantic-index")]
         cfg.semantic_index.clone(),
@@ -287,6 +296,7 @@ async fn apply_full_tools_with_mcp(
 ) -> Result<(), String> {
     let mut tools = build_tool_registry(
         &cfg.shell_allow,
+        cfg.shell_timeout_secs,
         cfg.web_fetch,
         #[cfg(feature = "semantic-index")]
         cfg.semantic_index.clone(),

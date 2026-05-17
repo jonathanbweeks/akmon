@@ -62,6 +62,8 @@ pub struct TuiLaunchConfig {
     pub ollama_url: String,
     /// `--shell-allow` patterns.
     pub shell_allow: Vec<String>,
+    /// Shell tool wall-clock timeout (seconds). 0 means use the compiled-in default.
+    pub shell_timeout_secs: u64,
     /// `--web-fetch`
     pub web_fetch: bool,
     /// `--yes-web`
